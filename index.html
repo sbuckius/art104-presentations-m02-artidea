@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Learning + Surprise Reflection Worksheet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+body {
+  font-family: system-ui, sans-serif;
+  background:#111;
+  color:#eee;
+  padding:20px;
+}
+
+#exportBar {
+  display:flex;
+  gap:10px;
+  margin-bottom:20px;
+  padding-bottom:10px;
+  border-bottom:1px solid #333;
+  flex-wrap:wrap;
+}
+
+.question {
+  border:1px solid #333;
+  border-radius:10px;
+  padding:15px;
+  margin-bottom:18px;
+  background:#181818;
+}
+
+textarea {
+  width:100%;
+  min-height:60px;
+  background:#000;
+  color:#fff;
+  border:1px solid #333;
+  border-radius:6px;
+  padding:8px;
+  font-size:14px;
+}
+
+.responses {
+  margin-top:8px;
+  font-size:0.9rem;
+  color:#aaa;
+  max-height:120px;
+  overflow-y:auto;
+}
+
+button {
+  padding:6px 12px;
+  border-radius:6px;
+  border:none;
+  cursor:pointer;
+}
+
+.admin-btn {
+  background:#c00;
+  color:#fff;
+}
+</style>
+</head>
+
+<body>
+
+<div id="exportBar">
+  <button onclick="exportMyPDF()">Export My Answers (Student PDF)</button>
+  <button onclick="exportTeacherPDF()">Export Teacher PDF (All Students)</button>
+  <button class="admin-btn" onclick="adminReset()">Admin Reset</button>
+</div>
+
+<h1>Learning + Surprise Reflection Worksheet</h1>
+<div id="anonLabel"></div>
+<div id="questions"></div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  where,
+  onSnapshot,
+  getDocs,
+  deleteDoc,
+  doc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* Firebase Config */
+const firebaseConfig = {
+const firebaseConfig = {
+
+  apiKey: "AIzaSyD5hkKW5KfnVEjLsgE1mqodDRdx4TKIH_I",
+
+  authDomain: "art104-presentation-m02artidea.firebaseapp.com",
+
+  projectId: "art104-presentation-m02artidea",
+
+  storageBucket: "art104-presentation-m02artidea.firebasestorage.app",
+
+  messagingSenderId: "114561155939",
+
+  appId: "1:114561155939:web:37a6f887e433177a1ac956",
+
+  measurementId: "G-70WE09NVGR"
+
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* Anonymous ID */
+function generateID() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+let anonID = localStorage.getItem("anonID");
+if (!anonID) {
+  anonID = generateID();
+  localStorage.setItem("anonID", anonID);
+}
+
+document.getElementById("anonLabel").textContent =
+  `Your anonymous ID: ${anonID}`;
+
+/* Build Questions */
+const container = document.getElementById("questions");
+
+for (let i = 1; i <= 24; i++) {
+  const div = document.createElement("div");
+  div.className = "question";
+  div.innerHTML = `
+    <h3>Presentation ${i}</h3>
+    <textarea id="text-${i}" placeholder="Write one sentence about something new that you learned from the presentation or something surprising in the presentation..."></textarea><br>
+    <button onclick="submitAnswer(${i})">Submit</button>
+    <div class="responses" id="responses-${i}"></div>
+  `;
+  container.appendChild(div);
+  listenForResponses(i);
+}
+
+/* Submit Answer */
+window.submitAnswer = async function(num) {
+  const text = document.getElementById(`text-${num}`).value.trim();
+  if (!text) return alert("Please write something first.");
+
+  await addDoc(collection(db, "responses"), {
+    questionNumber: num,
+    text,
+    anonID,
+    timestamp: Date.now()
+  });
+
+  document.getElementById(`text-${num}`).value = "";
+};
+
+/* Live Responses */
+function listenForResponses(num) {
+  const q = query(
+    collection(db, "responses"),
+    where("questionNumber", "==", num)
+  );
+
+  onSnapshot(q, (snapshot) => {
+    const box = document.getElementById(`responses-${num}`);
+    box.innerHTML = "";
+
+    snapshot.forEach((docSnap) => {
+      const d = docSnap.data();
+      const row = document.createElement("div");
+      row.textContent = `${d.anonID}: ${d.text}`;
+      box.appendChild(row);
+    });
+  });
+}
+
+/* Fetch My Responses */
+async function getMyResponses() {
+  const q = query(
+    collection(db, "responses"),
+    where("anonID", "==", anonID)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => d.data());
+}
+
+/* Fetch All Responses */
+async function getAllResponses() {
+  const snapshot = await getDocs(collection(db, "responses"));
+  return snapshot.docs.map(d => d.data());
+}
+
+/* Engineering Frame */
+function addEngineeringFrame(pdf, pageNumber, titleText) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  pdf.setLineWidth(0.8);
+  pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
+  pdf.setLineWidth(0.5);
+  pdf.rect(10, pageHeight - 30, pageWidth - 20, 20);
+
+  pdf.setFontSize(8);
+  pdf.setFont("helvetica", "normal");
+  pdf.text(titleText, 15, pageHeight - 20);
+  pdf.text(`Date: ${new Date().toLocaleDateString()}`, 15, pageHeight - 15);
+  pdf.text(`Page ${pageNumber}`, pageWidth - 30, pageHeight - 15);
+}
+
+/* PDF Export Function (Shared) */
+async function exportPDF(responses, filename, titleText) {
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  const marginTop = 25;
+  const marginBottom = 25;
+  const marginLeft = 20;
+  const usableWidth = pageWidth - 40;
+
+  const headingSize = 16;
+  const answerSize = 12;
+  const lineHeight = 6;
+
+  let y = marginTop;
+  let pageNumber = 1;
+
+  addEngineeringFrame(pdf, pageNumber, titleText);
+
+  for (let r of responses) {
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(headingSize);
+
+    if (y + 10 > pageHeight - marginBottom) {
+      pdf.addPage();
+      pageNumber++;
+      addEngineeringFrame(pdf, pageNumber, titleText);
+      y = marginTop;
+    }
+
+    pdf.text(`Presentation ${r.questionNumber} — ${r.anonID || ""}`, marginLeft, y);
+    y += 10;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(answerSize);
+
+    const wrapped = pdf.splitTextToSize(r.text, usableWidth);
+
+    for (let line of wrapped) {
+      if (y + lineHeight > pageHeight - marginBottom) {
+        pdf.addPage();
+        pageNumber++;
+        addEngineeringFrame(pdf, pageNumber, titleText);
+        y = marginTop;
+      }
+
+      pdf.text(line, marginLeft, y);
+      y += lineHeight;
+    }
+
+    y += 8;
+  }
+
+  pdf.save(filename);
+}
+
+/* Student PDF */
+window.exportMyPDF = async function () {
+  const responses = await getMyResponses();
+  if (!responses.length) return alert("No responses found.");
+  responses.sort((a, b) => a.questionNumber - b.questionNumber);
+  exportPDF(responses, `student_${anonID}.pdf`, `Student Copy — ID: ${anonID}`);
+};
+
+/* Teacher PDF */
+window.exportTeacherPDF = async function () {
+  let responses = await getAllResponses();
+  if (!responses.length) return alert("No responses found.");
+  responses.sort((a, b) => {
+    if (a.questionNumber === b.questionNumber)
+      return a.anonID.localeCompare(b.anonID);
+    return a.questionNumber - b.questionNumber;
+  });
+  exportPDF(responses, `teacher_all_students.pdf`, `Teacher Copy — All Students`);
+};
+
+/* Password-Protected Admin Reset */
+window.adminReset = async function () {
+
+  const password = prompt("Enter admin password:");
+  if (password !== "admin123") {   // <- change this to your own password
+    alert("Incorrect password");
+    return;
+  }
+
+  const confirmed = confirm(
+    "Are you sure you want to delete ALL responses? This cannot be undone."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const snapshot = await getDocs(collection(db, "responses"));
+    const deletions = snapshot.docs.map(docSnap =>
+      deleteDoc(doc(db, "responses", docSnap.id))
+    );
+
+    await Promise.all(deletions);
+
+    alert(`All responses deleted (${snapshot.docs.length} entries).`);
+  } catch (err) {
+    console.error(err);
+    alert("Error deleting responses: " + err.message);
+  }
+};
+
+</script>
+</body>
+</html>
